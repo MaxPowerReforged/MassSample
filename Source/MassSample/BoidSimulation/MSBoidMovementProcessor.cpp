@@ -79,12 +79,15 @@ void UMSBoidMovementProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FM
 
 				for (const FMSBoid& Boid : BoidsInRadius)
 				{
-					BoidVelocities.Push(Boid.Velocity);
-					BoidLocations.Push(Boid.Location);
-					FVector RepulsionDirection = Locations[i].Location - Boid.Location;
-					//RepulsionDirection = RepulsionDirection * (1 / RepulsionDirection.Length());
+					if (UE::Geometry::DistanceSquared(Locations[i].Location, Boid.Location) < (SightRadius * SightRadius))
+					{
+						BoidVelocities.Push(Boid.Velocity);
+						BoidLocations.Push(Boid.Location);
+						FVector RepulsionDirection = Locations[i].Location - Boid.Location;
+						//RepulsionDirection = RepulsionDirection * (1 / RepulsionDirection.Length());
 
-					BoidRepulsionForces.Push(RepulsionDirection);
+						BoidRepulsionForces.Push(RepulsionDirection);
+					}
 				}
 
 				// const TArray<FMassEntityHandle> BoidsInRadius = BoidSubsystem->GetBoidsInRadius(Locations[i].Location, SightRadius);

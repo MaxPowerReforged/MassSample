@@ -12,4 +12,5 @@ void UMSBoidTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, 
 	BuildContext.AddFragment<FMSBoidVelocityFragment>();
 	BuildContext.AddFragment<FMSBoidForcesFragment>();
 	BuildContext.AddFragment<FMSBoidRenderFragment>();
+	BuildContext.AddFragment<FMSBoidNetId>();
 }

@@ -6,6 +6,7 @@
 #include "MSBoidFragments.h"
 #include "MSBoidOctree.h"
 #include "MSBoidSubsystem.h"
+#include "Engine/NetDriver.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -19,84 +20,103 @@ AMSBoidReplicator::AMSBoidReplicator()
 
 void AMSBoidReplicator::CheckLocations()
 {
-	// if (GetNetMode() == ENetMode::NM_Client) return;
-	// StepNumber++;
-	//
-	// if (Boids.Num() == 0) return;
-	//
-	// // Calculate how many Boids are pending update from the array
-	// int BoidsPendingUpdate = Boids.Num() - CurrentBoidIndex;
-	//
-	// if (BoidsPendingUpdate == 0) return;
-	//
-	// // Calculate how many batches are remaining
-	// uint8 BatchesRemaining = BatchesPerUpdate - CurrentBatchIndex;
-	//
-	// // Distribute evenly the remaining Boids between the remaining batches
-	// int BoidsToUpdateThisBatch = BoidsPendingUpdate / BatchesRemaining;
-	//
-	// // If there are so few Boids that it's less than one per batch (thus, 0), update them all
-	// if (BoidsToUpdateThisBatch == 0)
-	// {
-	// 	BoidsToUpdateThisBatch = BoidsPendingUpdate;
-	// }
-	//
-	// int LastBoidToUpdateIndex = BoidsToUpdateThisBatch + CurrentBoidIndex;
-	//
-	// // Loop from the current Boid until we finish this batch or arrive to the end of the array
-	// while (
-	// 	(CurrentBoidIndex < LastBoidToUpdateIndex) &&
-	// 	(CurrentBoidIndex < Boids.Num())
-	// 	)
-	// {
-	// 	FMSBoid CurrentBoid = Boids[CurrentBoidIndex];
-	// 	FMSBoidCachedLocation* CachedLocation = CachedBoidLocations.Find(CurrentBoid);
-	//
-	// 	// UE_LOG(LogTemp, Error, TEXT("ARTSBoidLocationReplicator CurrentBoid is Valid"));
-	// 	
-	// 	if (!CachedLocation)
-	// 	{
-	// 		CachedBoidLocations.Emplace(CurrentBoid, FMSBoidCachedLocation(
-	// 			CurrentBoid.Location.X,
-	// 			CurrentBoid.Location.Y,
-	// 			CurrentBoid.Location.Z
-	// 			));
-	//
-	// 		CurrentBatchIndex = (CurrentBatchIndex + 1) % BatchesPerUpdate;
-	// 		continue;
-	// 	}
-	// 	
-	// 	if (CachedLocation->LocationX != CurrentBoid.Location.X || CachedLocation->LocationY != CurrentBoid.Location.Y)
-	// 	{
-	// 		// Cache new location
-	// 		CachedLocation->LocationX = CurrentBoid.Location.X;
-	// 		CachedLocation->LocationY = CurrentBoid.Location.Y;
-	//
-	// 		// Add new location to array for update
-	// 		BoidsToUpdate.Push(FMSBoidLocationNet(
-	// 			CurrentBoid.Location.X / NetUpdatePrecisionTolerance,
-	// 			CurrentBoid.Location.Y / NetUpdatePrecisionTolerance,
-	// 			CurrentBoid.Location.Z / NetUpdatePrecisionTolerance,
-	// 			CurrentBoid.Id
-	// 		));
-	// 	}
-	//
-	// 	// Increment the CurrentBoidIndex but never surpass the array length
-	// 	CurrentBoidIndex = (CurrentBoidIndex + 1) % Boids.Num();
-	//
-	// 	//to avoid infinite loops, break if after incrementing the Boid index is 0 again
-	// 	if (CurrentBoidIndex == 0) break;
-	// }
-	//
-	// CurrentBatchIndex = (CurrentBatchIndex + 1) % BatchesPerUpdate;
-	//
-	// //Ensure that every new update starts from the first Boid
-	// if (CurrentBatchIndex == 0) CurrentBoidIndex = 0;
-	//
-	// if (BoidsToUpdate.Num() > 0) NetCastLocations(BoidsToUpdate, StepNumber);
-	// UE_LOG(LogTemp, Error, TEXT("ARTSBoidLocationReplicator. Server Sent update no. %d at time %f"), StepNumber, UGameplayStatics::GetRealTimeSeconds(GetWorld()));
-	//
-	// BoidsToUpdate.Empty();
+	if (GetNetMode() == ENetMode::NM_Client) return;
+	StepNumber++;
+	
+	if (Boids.Num() == 0) return;
+	
+	// Calculate how many Boids are pending update from the array
+	int BoidsPendingUpdate = Boids.Num() - CurrentBoidIndex;
+	
+	if (BoidsPendingUpdate == 0) return;
+	
+	// Calculate how many batches are remaining
+	uint8 BatchesRemaining = BatchesPerUpdate - CurrentBatchIndex;
+	
+	// Distribute evenly the remaining Boids between the remaining batches
+	int BoidsToUpdateThisBatch = BoidsPendingUpdate / BatchesRemaining;
+	
+	// If there are so few Boids that it's less than one per batch (thus, 0), update them all
+	if (BoidsToUpdateThisBatch == 0)
+	{
+		BoidsToUpdateThisBatch = BoidsPendingUpdate;
+	}
+	
+	int LastBoidToUpdateIndex = BoidsToUpdateThisBatch + CurrentBoidIndex;
+	
+	// Loop from the current Boid until we finish this batch or arrive to the end of the array
+	while (
+		(CurrentBoidIndex < LastBoidToUpdateIndex) &&
+		(CurrentBoidIndex < Boids.Num())
+		)
+	{
+		uint16 CurrentBoidId = Boids[CurrentBoidIndex].Id;
+		FMassEntityHandle* CurrentBoid = BoidSubsystem->NetIdMassHandleMap.Find(CurrentBoidId);
+
+		UMassEntitySubsystem* MassSubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+		const FVector& Location = MassSubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(*CurrentBoid).
+		                                  Location;
+
+		const FVector& Velocity = MassSubsystem->GetFragmentDataChecked<FMSBoidVelocityFragment>(*CurrentBoid).Velocity;
+		
+		FMSBoidCachedLocation* CachedLocation = CachedBoidLocations.Find(CurrentBoidId);
+	
+		// UE_LOG(LogTemp, Error, TEXT("ARTSBoidLocationReplicator CurrentBoid is Valid"));
+		
+		if (!CachedLocation)
+		{
+			CachedBoidLocations.Emplace(CurrentBoidId, FMSBoidCachedLocation(
+				Location.X,
+				Location.Y,
+				Location.Z
+				));
+	
+			CurrentBatchIndex = (CurrentBatchIndex + 1) % BatchesPerUpdate;
+			continue;
+		}
+		
+		if (CachedLocation->LocationX != Location.X || CachedLocation->LocationY != Location.Y || CachedLocation->LocationZ != Location.Z)
+		{
+			// Cache new location
+			CachedLocation->LocationX = Location.X;
+			CachedLocation->LocationY = Location.Y;
+			CachedLocation->LocationZ = Location.Z;
+	
+			// Add new location to array for update
+			BoidsToUpdate.Push(FMSBoidLocationNet(
+				Location.X / NetUpdatePrecisionTolerance,
+				Location.Y / NetUpdatePrecisionTolerance,
+				Location.Z / NetUpdatePrecisionTolerance,
+				CurrentBoidId,
+				Velocity
+			));
+		}
+	
+		// Increment the CurrentBoidIndex but never surpass the array length
+		CurrentBoidIndex = (CurrentBoidIndex + 1) % Boids.Num();
+	
+		//to avoid infinite loops, break if after incrementing the Boid index is 0 again
+		if (CurrentBoidIndex == 0) break;
+	}
+	
+	CurrentBatchIndex = (CurrentBatchIndex + 1) % BatchesPerUpdate;
+	
+	//Ensure that every new update starts from the first Boid
+	if (CurrentBatchIndex == 0) CurrentBoidIndex = 0;
+	
+	if (BoidsToUpdate.Num() > 0) NetCastLocations(BoidsToUpdate, StepNumber);
+	UE_LOG(LogTemp, Error, TEXT("ARTSBoidLocationReplicator. Server Sent update no. %d at time %f"), StepNumber, UGameplayStatics::GetRealTimeSeconds(GetWorld()));
+	
+	BoidsToUpdate.Empty();
+}
+
+void AMSBoidReplicator::NetCastSpawnBoids_Implementation(const TArray<FMSBoidNetSpawnData>& BoidData)
+{
+	if (GetWorld()->GetNetMode() == ENetMode::NM_Client)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AMSBoidReplicator::NetCastSpawnBoids() in client num: %d"), BoidData.Num());
+	}
+	BoidSubsystem->SpawnBoidsFromData(BoidData);
 }
 
 void AMSBoidReplicator::StartUpdates()
@@ -111,6 +131,8 @@ void AMSBoidReplicator::StartUpdates()
 			(LocationUpdateFrequency / BatchesPerUpdate),
 			true
 		);
+	
+	if (GetNetDriver()) GetNetDriver()->bCollectNetStats = true;
 }
 
 void AMSBoidReplicator::StopUpdates()
@@ -122,15 +144,15 @@ void AMSBoidReplicator::StopUpdates()
 void AMSBoidReplicator::AddBoid(const FMSBoid& Boid)
 {
 	if (GetNetMode() == ENetMode::NM_Client) return;
-	//this->Boids.Push(Boid);
+	this->Boids.Push(Boid);
 }
 
 void AMSBoidReplicator::RemoveBoid(const FMSBoid& Boid)
 {
 	if (GetNetMode() == ENetMode::NM_Client) return;
 
-	//this->Boids.Remove(Boid);
-	//this->CachedBoidLocations.Remove(Boid);
+	this->Boids.Remove(Boid);
+	this->CachedBoidLocations.Remove(Boid.Id);
 }
 
 bool AMSBoidReplicator::IsUpdateValid()
@@ -177,9 +199,13 @@ void AMSBoidReplicator::NetCastLocations_Implementation(const TArray<FMSBoidLoca
 			BoidLocation.LocationZ * NetUpdatePrecisionTolerance
 			);
 
+		UE_LOG(LogTemp, Error, TEXT("ARTSBoidLocationReplicator. Id: %d ServerLocation: %s, ClientLocation: %s"), BoidLocation.BoidId, *ServerLocation.ToString(), *CurrentLocation.ToString());
+		
 		if (!CurrentLocation.Equals(ServerLocation, NetUpdatePrecisionTolerance))
 		{
 			// BoidLocation.Boid->ApplyServerLocationUpdate(ServerLocation);
+			BoidSubsystem->MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(*CurrentBoidHandle).Location = ServerLocation;
+			BoidSubsystem->MassEntitySubsystem->GetFragmentDataChecked<FMSBoidVelocityFragment>(*CurrentBoidHandle).Velocity = BoidLocation.Velocity;
 		}
 	}
 }

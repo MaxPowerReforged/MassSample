@@ -45,3 +45,10 @@ struct FMSBoidRenderFragment : public FMassFragment
 	GENERATED_BODY()
 	uint32 HismId;
 };
+
+USTRUCT()
+struct FMSBoidNetId : public FMassFragment
+{
+	GENERATED_BODY()
+	uint16 Id;
+};

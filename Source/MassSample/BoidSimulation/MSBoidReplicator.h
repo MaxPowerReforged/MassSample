@@ -13,11 +13,18 @@ USTRUCT()
 struct FMSBoidLocationNet
 {
 	GENERATED_BODY()
-	
-	UPROPERTY() uint16 LocationX;
-	UPROPERTY() uint16 LocationY;
-	UPROPERTY() uint16 LocationZ;
-	UPROPERTY() uint16 BoidId;
+
+	UPROPERTY()
+	int16 LocationX;
+	UPROPERTY()
+	int16 LocationY;
+	UPROPERTY()
+	int16 LocationZ;
+	UPROPERTY()
+	uint16 BoidId;
+
+	UPROPERTY()
+	FVector_NetQuantize Velocity;
 
 	FMSBoidLocationNet()
 	{
@@ -25,14 +32,16 @@ struct FMSBoidLocationNet
 		LocationY = 0;
 		LocationZ = 0;
 		BoidId = 0;
+		Velocity = FVector::ZeroVector;
 	}
 
-	FMSBoidLocationNet(uint16 LocationX, uint16 LocationY, uint16 LocationZ, uint16 BoidId)
+	FMSBoidLocationNet(uint16 LocationX, uint16 LocationY, uint16 LocationZ, uint16 BoidId, FVector Velocity)
 	{
 		this->LocationX = LocationX;
 		this->LocationY = LocationY;
 		this->LocationZ = LocationZ;
 		this->BoidId = BoidId;
+		this->Velocity = Velocity;
 	}
 };
 
@@ -40,10 +49,13 @@ USTRUCT()
 struct FMSBoidCachedLocation
 {
 	GENERATED_BODY()
-	
-	UPROPERTY() float LocationX;
-	UPROPERTY() float LocationY;
-	UPROPERTY() float LocationZ;
+
+	UPROPERTY()
+	float LocationX;
+	UPROPERTY()
+	float LocationY;
+	UPROPERTY()
+	float LocationZ;
 
 	FMSBoidCachedLocation()
 	{
@@ -60,6 +72,28 @@ struct FMSBoidCachedLocation
 	}
 };
 
+USTRUCT()
+struct FMSBoidNetSpawnData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	uint16 NetId;
+	UPROPERTY()
+	FVector Location;
+	UPROPERTY()
+	FVector Velocity;
+
+	FMSBoidNetSpawnData() : NetId(0), Location(FVector::ZeroVector), Velocity(FVector::ZeroVector)
+	{
+	}
+
+	FMSBoidNetSpawnData(uint16 NetId, FVector Location, FVector Velocity) : NetId(NetId), Location(Location),
+	                                                                        Velocity(Velocity)
+	{
+	}
+};
+
 UCLASS()
 class MASSSAMPLE_API AMSBoidReplicator : public AActor
 {
@@ -70,30 +104,34 @@ public:
 	AMSBoidReplicator();
 
 	/** Server-side. Multicast Boids' locations every N seconds */
-	UFUNCTION() void CheckLocations();
+	UFUNCTION()
+	void CheckLocations();
 
 	/** All clients-side. Apply server's Boid location */
 	UFUNCTION(NetMulticast, Unreliable)
 	void NetCastLocations(const TArray<FMSBoidLocationNet>& BoidLocations, int32 ServerStepNumber);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void NetCastSpawnBoids(const TArray<FMSBoidNetSpawnData>& BoidData);
 
 	UFUNCTION()
 	void StartUpdates();
 
 	UFUNCTION()
 	void StopUpdates();
-	
+
 	void AddBoid(const FMSBoid& Boid);
-	
+
 	void RemoveBoid(const FMSBoid& Boid);
 
 	/** Checks update timings to see if it was not in time and therefore has outdated positions */
 	UFUNCTION()
 	bool IsUpdateValid();
-	
+
 	TArray<FMSBoid> Boids;
 
 	/** Stores past boid Locations to check if they have changed */
-	//TMap<FMSBoid, FMSBoidCachedLocation> CachedBoidLocations;
+	TMap<uint16, FMSBoidCachedLocation> CachedBoidLocations;
 
 	/** How many times we divide the Boid array based on the LocationUpdateFrequency */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Net Testing", meta = (ClampMin = 0))
@@ -122,5 +160,6 @@ public:
 	uint16 BoidsPerBatch = 0;
 	float LastUpdateTime = 0;
 	FTimerHandle UpdateTimerHandle;
-	UPROPERTY() int32 StepNumber = 0;
+	UPROPERTY()
+	int32 StepNumber = 0;
 };

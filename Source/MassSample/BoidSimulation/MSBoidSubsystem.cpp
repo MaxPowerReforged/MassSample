@@ -24,13 +24,13 @@ void UMSBoidSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bDrawDebugBoxes = BoidSettings->DrawDebugBoxes;
 	bIsStatic = BoidSettings->Static;
 
-	BoidReplicator = (AMSBoidReplicator*) GetWorld()->SpawnActor(AMSBoidReplicator::StaticClass());
+	BoidReplicator = (AMSBoidReplicator*)GetWorld()->SpawnActor(AMSBoidReplicator::StaticClass());
 	BoidReplicator->BoidSubsystem = this;
 	BoidReplicator->BatchesPerUpdate = BoidSettings->BatchesPerUpdate;
 	BoidReplicator->LocationUpdateFrequency = BoidSettings->LocationUpdateFrequency;
 	BoidReplicator->NetUpdatePrecisionTolerance = BoidSettings->NetUpdatePrecisionTolerance;
 	BoidReplicator->NetUpdateTimeThreshold = BoidSettings->NetUpdateTimeThreshold;
-	
+
 
 	BoidOctree = MakeUnique<FMSBoidOctree>(FVector::ZeroVector, SimulationExtentFromCenter);
 
@@ -45,10 +45,7 @@ void UMSBoidSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 
-	// Execute with delay so that actors are initialized to avoid crashes
-	FTimerHandle UnusedHandle;
-	GetWorld()->GetTimerManager().SetTimer(
-		UnusedHandle, this, &UMSBoidSubsystem::SpawnRandomBoids, 0.2, false);
+	BoidReplicator->StartUpdates();
 }
 
 TArray<FMSBoid> UMSBoidSubsystem::GetBoidsInRadius(const FBoxCenterAndExtent& QueryBox)
@@ -67,7 +64,8 @@ TArray<FMassEntityHandle> UMSBoidSubsystem::GetBoidsInRadius(FVector Center, flo
 	TArray<FMassEntityHandle> FoundBoids;
 	HashGrid.FindPointsInBall(Center, Radius, [&, Center](const FMassEntityHandle& Entity)
 	{
-		const FVector EntityLocation = MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(Entity).Location;
+		const FVector EntityLocation = MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(Entity).
+		                                                    Location;
 		return UE::Geometry::DistanceSquared(Center, EntityLocation);
 	}, FoundBoids);
 
@@ -135,15 +133,39 @@ void UMSBoidSubsystem::DrawDebugOctree()
 
 void UMSBoidSubsystem::SpawnRandomBoids()
 {
+	// the random data is only generated on the server to be later multicasted to clients
+	if (GetWorld()->GetNetMode() == ENetMode::NM_Client) return;
+
+	TArray<FMSBoidNetSpawnData> SpawnData;
+
 	for (int i = 0; i < NumOfBoids; ++i)
 	{
-		SpawnBoid();
+		SpawnData.Push(GenerateBoidRandomData());
 	}
+
+	BoidReplicator->NetCastSpawnBoids(SpawnData);
 }
 
-void UMSBoidSubsystem::SpawnBoid()
+FMSBoidNetSpawnData UMSBoidSubsystem::GenerateBoidRandomData()
 {
-	if (BoidEntityConfig)
+	NextBoidId++;
+	return FMSBoidNetSpawnData(
+		NextBoidId,
+		FMath::VRand() * FMath::RandRange(10, SimulationExtentFromCenter / 2),
+		FMath::VRand() * FMath::RandRange(10, BoidMaxSpeed)
+	);
+}
+
+void UMSBoidSubsystem::SpawnBoidsFromData(const TArray<FMSBoidNetSpawnData>& NewBoidData)
+{
+	if (GetWorld()->GetNetMode() == ENetMode::NM_Client)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMSBoidSubsystem::SpawnBoidsFromData() in client num: %d"), NewBoidData.Num());
+	}
+	
+	if (!BoidEntityConfig) return;
+
+	for (const FMSBoidNetSpawnData& BoidData : NewBoidData)
 	{
 		FEntityHandleWrapper NewBoid = UMSBPFunctionLibrary::SpawnEntityFromEntityConfig(
 			BoidEntityConfig,
@@ -151,37 +173,30 @@ void UMSBoidSubsystem::SpawnBoid()
 			false
 		);
 
-		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(NewBoid.Entity).Location = FMath::VRand() *
-			FMath::RandRange(10, SimulationExtentFromCenter / 2);
+		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(NewBoid.Entity).Location = BoidData.Location;
+		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidVelocityFragment>(NewBoid.Entity).Velocity = BoidData.Velocity;
 
-		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidVelocityFragment>(NewBoid.Entity).Velocity = FMath::VRand() *
-			FMath::RandRange(10, BoidMaxSpeed);
-
-		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidForcesFragment>(NewBoid.Entity).ForceResult =
-			FMath::VRand();
-
-		auto NewBoidLocation = MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(NewBoid.Entity).
-		                                            Location;
-		
-		int32 HismIndex = Hism->AddInstance(FTransform(NewBoidLocation), true);
-
+		int32 HismIndex = Hism->AddInstance(FTransform(BoidData.Location), true);
 		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidRenderFragment>(NewBoid.Entity).HismId = HismIndex;
 
-		uint16 NewId = NextBoidId;
-		NextBoidId++;
+		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidNetId>(NewBoid.Entity).Id = BoidData.NetId;
 
 		FMSBoid NewBoidStruct = FMSBoid(
-			NewBoidLocation,
-			FVector::ZeroVector,
-			NewId
+			BoidData.Location,
+			BoidData.Velocity,
+			BoidData.NetId
 		);
 
-		NetIdMassHandleMap.Add(NewId, NewBoid.Entity);
-		BoidReplicator->AddBoid(NewBoidStruct);
-
-		HashGrid.InsertPoint(NewBoid.Entity, NewBoidLocation);
+		NetIdMassHandleMap.Add(BoidData.NetId, NewBoid.Entity);
+		
+		// HashGrid.InsertPoint(NewBoid.Entity, BoidData.Location);
 
 		if (bDrawDebugBoxes) UE_LOG(LogTemp, Warning, TEXT("UMSBoidSubsystem::SpawnBoid() id: %d, location: %s"),
-		                            NewBoid.Entity.Index, *NewBoidLocation.ToString());
+							NewBoid.Entity.Index, *BoidData.Location.ToString());
+
+		// only add to replicator if server
+		if (GetWorld()->GetNetMode() == ENetMode::NM_Client) continue;
+
+		BoidReplicator->AddBoid(NewBoidStruct);
 	}
 }

@@ -28,6 +28,11 @@ public:
 	TArray<FMSBoid> GetBoidsInRadius(const FBoxCenterAndExtent& QueryBox);
 	TArray<FMassEntityHandle> GetBoidsInRadius(FVector Center, float Radius);
 
+	void SpawnBoidsFromData(const TArray<FMSBoidNetSpawnData>& NewBoidData);
+
+	UFUNCTION(BlueprintCallable)
+	void SpawnRandomBoids();
+
 	UPROPERTY(Transient)
 	UMassEntitySubsystem* MassEntitySubsystem;
 
@@ -57,10 +62,10 @@ public:
 	int32 BoidMaxSpeed = 50;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Simulation")
-	float BoidSightRadius = 200;
+	float BoidSightRadius = 100;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Forces")
-	float TargetWeight = 1;
+	float TargetWeight = 0.001;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Forces")
 	float AlignWeight = 0.5;
@@ -72,10 +77,7 @@ public:
 	float CohesionWeight = 0.5;
 
 private:
-
-	void SpawnRandomBoids();
-
-	void SpawnBoid();
+	FMSBoidNetSpawnData GenerateBoidRandomData();
 
 	int32 SimulationExtentFromCenter;
 	int32 NumOfBoids;

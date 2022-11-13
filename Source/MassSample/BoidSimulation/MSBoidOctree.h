@@ -2,15 +2,28 @@
 
 #include "CoreMinimal.h"
 #include "Math/GenericOctree.h"
+#include "MSBoidOctree.generated.h"
 
+USTRUCT()
 struct FMSBoid
 {
-	FVector Location;
-	FVector Velocity;
-	uint16 Id;
+
+	GENERATED_BODY()
+
+	UPROPERTY() FVector Location;
+	UPROPERTY() FVector Velocity;
+	UPROPERTY() uint16 Id;
+
+	FMSBoid() : Location(FVector::ZeroVector), Velocity(FVector::ZeroVector), Id(0)
+	{}
 
 	FMSBoid(FVector InLocation, FVector InVelocity, uint16 Id) : Location(InLocation), Velocity(InVelocity), Id(Id)
 	{}
+
+	bool operator==(const FMSBoid& Other) const
+	{
+		return Id == Other.Id;
+	}
 };
 
 struct FMSBoidOctreeSemantics

@@ -10,7 +10,10 @@
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 
-DECLARE_CYCLE_STAT(TEXT("Boids Render ~ HISM update"), STAT_RenderInHism, STATGROUP_BoidsRender);
+DECLARE_CYCLE_STAT(TEXT("Boids Render ~ Render"), STAT_Render, STATGROUP_BoidsRender);
+DECLARE_CYCLE_STAT(TEXT("Boids Render ~ HISM update"), STAT_HismUpdate, STATGROUP_BoidsRender);
+DECLARE_CYCLE_STAT(TEXT("Boids Render ~ Niagara array fill"), STAT_NiagaraArrayFill, STATGROUP_BoidsRender);
+DECLARE_CYCLE_STAT(TEXT("Boids Render ~ Niagara update"), STAT_NiagaraUpdate, STATGROUP_BoidsRender);
 
 UMSBoidRenderProcessor::UMSBoidRenderProcessor()
 {
@@ -32,10 +35,13 @@ void UMSBoidRenderProcessor::ConfigureQueries()
 
 void UMSBoidRenderProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FMassExecutionContext& Context)
 {
-	SCOPE_CYCLE_COUNTER(STAT_RenderInHism);
+	SCOPE_CYCLE_COUNTER(STAT_Render);
 	const UMSBoidDevSettings* const BoidSettings = GetDefault<UMSBoidDevSettings>();
 	TArray<FVector> LocationArray;
 	TArray<FVector> RotationArray;
+
+	LocationArray.SetNum(BoidSettings->NumOfBoids, false);
+	RotationArray.SetNum(BoidSettings->NumOfBoids, false);
 	
 	RenderBoidsQuery.ForEachEntityChunk(EntitySubsystem, Context, [this, BoidSettings, &LocationArray, &RotationArray](FMassExecutionContext& Context)
 	{
@@ -52,11 +58,13 @@ void UMSBoidRenderProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FMas
 
 			if (BoidSettings->UseNiagara)
 			{
-				LocationArray.Add(Location);
-				RotationArray.Add(Velocity);
+				SCOPE_CYCLE_COUNTER(STAT_NiagaraArrayFill);
+				LocationArray[i] = Location;
+				RotationArray[i] = Velocity;
 			}
 			else
 			{
+				SCOPE_CYCLE_COUNTER(STAT_HismUpdate);
 				BoidSubsystem->Hism->UpdateInstanceTransform(
 					HismIndex,
 					FTransform(FRotator(Velocity.X, Velocity.Y, Velocity.Z), Location, FVector(1)),
@@ -71,6 +79,7 @@ void UMSBoidRenderProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FMas
 
 	if (BoidSettings->UseNiagara)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_NiagaraUpdate);
 		UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoidSubsystem->NiagaraComponent,"MassBoidPositions", LocationArray);
 		UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoidSubsystem->NiagaraComponent,"MassBoidRotations", RotationArray);
 	}

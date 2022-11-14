@@ -60,7 +60,8 @@ void UMSBoidMovementProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FM
 		const auto Locations = Context.GetFragmentView<FMSBoidLocationFragment>();
 		const auto Forces = Context.GetMutableFragmentView<FMSBoidForcesFragment>();
 
-		for (int i = 0; i < NumEntities; ++i)
+		FCriticalSection Mutex;
+		ParallelFor(NumEntities, [&](int32 i)
 		{
 			TArray<FMSBoid> BoidsInRadius;
 
@@ -112,10 +113,70 @@ void UMSBoidMovementProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FM
 
 				const auto CohesionForce = AverageLocations - Locations[i].Location;
 
+				Mutex.Lock();
 				Forces[i].ForceResult = (AlignForce * AlignWeight) + (CohesionForce * CohesionWeight) + (
 					AverageRepulsion *
 					SeparationWeight) + (TargetForce * TargetWeight);
+				Mutex.Unlock();
 			}
+		});
+
+		for (int i = 0; i < NumEntities; ++i)
+		{
+			// TArray<FMSBoid> BoidsInRadius;
+			//
+			// {
+			// 	SCOPE_CYCLE_COUNTER(STAT_QueryOctree);
+			// 	const FBoxCenterAndExtent OctreeQuery =
+			// 		FBoxCenterAndExtent(Locations[i].Location, FVector(SightRadius));
+			// 	BoidsInRadius = BoidSubsystem->GetBoidsInRadius(OctreeQuery);
+			// }
+			//
+			// {
+			// 	SCOPE_CYCLE_COUNTER(STAT_ProcessOctreeResults);
+			// 	TArray<FVector> BoidVelocities;
+			// 	TArray<FVector> BoidLocations;
+			// 	TArray<FVector> BoidRepulsionForces;
+			//
+			// 	for (const FMSBoid& Boid : BoidsInRadius)
+			// 	{
+			// 		if (UE::Geometry::DistanceSquared(Locations[i].Location, Boid.Location) < (SightRadius * SightRadius))
+			// 		{
+			// 			BoidVelocities.Push(Boid.Velocity);
+			// 			BoidLocations.Push(Boid.Location);
+			// 			FVector RepulsionDirection = Locations[i].Location - Boid.Location;
+			// 			//RepulsionDirection = RepulsionDirection * (1 / RepulsionDirection.Length());
+			//
+			// 			BoidRepulsionForces.Push(RepulsionDirection);
+			// 		}
+			// 	}
+			//
+			// 	// const TArray<FMassEntityHandle> BoidsInRadius = BoidSubsystem->GetBoidsInRadius(Locations[i].Location, SightRadius);
+			// 	// TArray<FVector> BoidVelocities;
+			// 	// TArray<FVector> BoidLocations;
+			// 	// TArray<FVector> BoidRepulsionForces;
+			// 	//
+			// 	// for (const FMassEntityHandle& BoidHandle : BoidsInRadius)
+			// 	// {
+			// 	// 	const FVector& BoidHandleLocation = EntitySubsystem.GetFragmentDataChecked<FMSBoidLocationFragment>(BoidHandle).Location;
+			// 	// 	BoidVelocities.Push(EntitySubsystem.GetFragmentDataChecked<FMSBoidVelocityFragment>(BoidHandle).Velocity);
+			// 	// 	BoidLocations.Push(BoidHandleLocation);
+			// 	// 	FVector RepulsionDirection = Locations[i].Location - BoidHandleLocation;
+			// 	//
+			// 	// 	BoidRepulsionForces.Push(RepulsionDirection);
+			// 	// }
+			//
+			// 	const auto TargetForce = FVector::ZeroVector - Locations[i].Location;
+			// 	const auto AlignForce = UKismetMathLibrary::GetVectorArrayAverage(BoidVelocities);
+			// 	const auto AverageLocations = UKismetMathLibrary::GetVectorArrayAverage(BoidLocations);
+			// 	const auto AverageRepulsion = UKismetMathLibrary::GetVectorArrayAverage(BoidRepulsionForces);
+			//
+			// 	const auto CohesionForce = AverageLocations - Locations[i].Location;
+			//
+			// 	Forces[i].ForceResult = (AlignForce * AlignWeight) + (CohesionForce * CohesionWeight) + (
+			// 		AverageRepulsion *
+			// 		SeparationWeight) + (TargetForce * TargetWeight);
+			// }
 		}
 	});
 
@@ -136,14 +197,13 @@ void UMSBoidMovementProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FM
 
 	MoveBoidsQuery.ForEachEntityChunk(EntitySubsystem, Context, [this](FMassExecutionContext& Context)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_MoveMove);
-
 		const int32 NumEntities = Context.GetNumEntities();
 		const auto Locations = Context.GetMutableFragmentView<FMSBoidLocationFragment>();
 		const auto Velocities = Context.GetFragmentView<FMSBoidVelocityFragment>();
 
 		for (int i = 0; i < NumEntities; ++i)
 		{
+			SCOPE_CYCLE_COUNTER(STAT_MoveMove);
 			Locations[i].Location = Locations[i].Location + Velocities[i].Velocity * Context.GetDeltaTimeSeconds();
 		}
 	});

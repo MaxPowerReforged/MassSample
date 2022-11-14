@@ -8,6 +8,7 @@
 #include "MSBoidDevSettings.h"
 #include "MSBoidFragments.h"
 #include "MSBoidHismHelper.h"
+#include "MSBoidNiagaraHelper.h"
 #include "Common/Misc/MSBPFunctionLibrary.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "GameFramework/GameStateBase.h"
@@ -35,6 +36,7 @@ void UMSBoidSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	BoidOctree = MakeUnique<FMSBoidOctree>(FVector::ZeroVector, SimulationExtentFromCenter);
 
 	GetWorld()->SpawnActor<AMSBoidHismHelper>(AMSBoidHismHelper::StaticClass());
+	GetWorld()->SpawnActor<AMSBoidNiagaraHelper>(BoidSettings->NiagaraActorClass);
 
 	MassEntitySubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 
@@ -165,6 +167,8 @@ void UMSBoidSubsystem::SpawnBoidsFromData(const TArray<FMSBoidNetSpawnData>& New
 	
 	if (!BoidEntityConfig) return;
 
+	uint32 counter = 0;
+
 	for (const FMSBoidNetSpawnData& BoidData : NewBoidData)
 	{
 		FEntityHandleWrapper NewBoid = UMSBPFunctionLibrary::SpawnEntityFromEntityConfig(
@@ -176,7 +180,17 @@ void UMSBoidSubsystem::SpawnBoidsFromData(const TArray<FMSBoidNetSpawnData>& New
 		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidLocationFragment>(NewBoid.Entity).Location = BoidData.Location;
 		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidVelocityFragment>(NewBoid.Entity).Velocity = BoidData.Velocity;
 
-		int32 HismIndex = Hism->AddInstance(FTransform(BoidData.Location), true);
+		int32 HismIndex = counter;
+		++counter;
+
+		if (!BoidSettings->UseNiagara)
+		{
+			HismIndex = Hism->AddInstance(FTransform(BoidData.Location), true);
+		}
+		else
+		{
+			Hism->AddInstance(FTransform(), true);
+		}
 		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidRenderFragment>(NewBoid.Entity).HismId = HismIndex;
 
 		MassEntitySubsystem->GetFragmentDataChecked<FMSBoidNetId>(NewBoid.Entity).Id = BoidData.NetId;

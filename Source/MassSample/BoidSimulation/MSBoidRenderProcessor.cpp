@@ -4,8 +4,10 @@
 #include "MSBoidRenderProcessor.h"
 
 #include "MassRepresentationTypes.h"
+#include "MSBoidDevSettings.h"
 #include "MSBoidFragments.h"
 #include "MSBoidMovementProcessor.h"
+#include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 
 DECLARE_CYCLE_STAT(TEXT("Boids Render ~ HISM update"), STAT_RenderInHism, STATGROUP_BoidsRender);
@@ -31,7 +33,11 @@ void UMSBoidRenderProcessor::ConfigureQueries()
 void UMSBoidRenderProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FMassExecutionContext& Context)
 {
 	SCOPE_CYCLE_COUNTER(STAT_RenderInHism);
-	RenderBoidsQuery.ForEachEntityChunk(EntitySubsystem, Context, [this](FMassExecutionContext& Context)
+	const UMSBoidDevSettings* const BoidSettings = GetDefault<UMSBoidDevSettings>();
+	TArray<FVector> LocationArray;
+	TArray<FVector> RotationArray;
+	
+	RenderBoidsQuery.ForEachEntityChunk(EntitySubsystem, Context, [this, BoidSettings, &LocationArray, &RotationArray](FMassExecutionContext& Context)
 	{
 		const int32 NumEntities = Context.GetNumEntities();
 		const auto Locations = Context.GetFragmentView<FMSBoidLocationFragment>();
@@ -44,17 +50,33 @@ void UMSBoidRenderProcessor::Execute(UMassEntitySubsystem& EntitySubsystem, FMas
 			const FVector& Velocity = Velocities[i].Velocity;
 			const uint32 HismIndex = HismIndexes[i].HismId;
 
-			BoidSubsystem->Hism->UpdateInstanceTransform(
-				HismIndex,
-				FTransform(FRotator(Velocity.X, Velocity.Y, Velocity.Z), Location, FVector(1)),
-				//FTransform(Location),
-				true,
-				false,
-				true
-			);
+			if (BoidSettings->UseNiagara)
+			{
+				LocationArray.Add(Location);
+				RotationArray.Add(Velocity);
+			}
+			else
+			{
+				BoidSubsystem->Hism->UpdateInstanceTransform(
+					HismIndex,
+					FTransform(FRotator(Velocity.X, Velocity.Y, Velocity.Z), Location, FVector(1)),
+					//FTransform(Location),
+					true,
+					false,
+					true
+				);
+			}
 		}
 	});
 
-	if (BoidSubsystem && BoidSubsystem->Hism)
-		BoidSubsystem->Hism->MarkRenderTransformDirty();
+	if (BoidSettings->UseNiagara)
+	{
+		UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoidSubsystem->NiagaraComponent,"MassBoidPositions", LocationArray);
+		UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoidSubsystem->NiagaraComponent,"MassBoidRotations", RotationArray);
+	}
+	else
+	{
+		if (BoidSubsystem && BoidSubsystem->Hism)
+        		BoidSubsystem->Hism->MarkRenderTransformDirty();
+	}
 }

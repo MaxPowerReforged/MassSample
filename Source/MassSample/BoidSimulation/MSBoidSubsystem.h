@@ -7,6 +7,7 @@
 #include "MassEntitySubsystem.h"
 #include "MSBoidOctree.h"
 #include "MSBoidReplicator.h"
+#include "NiagaraComponent.h"
 #include "Common/Fragments/MSHashGridFragments.h"
 #include "MSBoidSubsystem.generated.h"
 
@@ -48,7 +49,10 @@ public:
 	FMSHashGrid3D HashGrid = FMSHashGrid3D(100.0f,FMassEntityHandle());
 
 	UPROPERTY()
-	UHierarchicalInstancedStaticMeshComponent* Hism;
+	UHierarchicalInstancedStaticMeshComponent* Hism = nullptr;
+
+	UPROPERTY()
+	UNiagaraComponent* NiagaraComponent = nullptr;
 
 	UPROPERTY()
 	UMSBoidDevSettings* BoidSettings;

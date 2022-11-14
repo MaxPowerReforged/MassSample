@@ -6,6 +6,7 @@
 #include "MassEntityConfigAsset.h"
 #include "MSBoidDevSettings.generated.h"
 
+class AMSBoidNiagaraHelper;
 /**
  * 
  */
@@ -20,6 +21,12 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Boids|Assets")
 	TSoftObjectPtr<UStaticMesh> StaticMesh;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Boids|Render")
+	TSubclassOf<AMSBoidNiagaraHelper> NiagaraActorClass;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Boids|Render")
+	bool UseNiagara = true;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Boids|Simulation")
 	int32 SimulationExtentFromCenter = 40000;
